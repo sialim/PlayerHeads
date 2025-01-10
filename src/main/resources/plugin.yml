@@ -1,0 +1,7 @@
+name: PlayerHeads
+version: '${project.version}'
+main: me.sialim.playerheads.PlayerHeads
+api-version: '1.21'
+commands:
+  starthead:
+    description: Fill a chest with player heads
