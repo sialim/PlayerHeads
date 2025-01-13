@@ -1,140 +1,115 @@
 package me.sialim.playerheads;
 
 import org.bukkit.Bukkit;
-import org.bukkit.ChatColor;
 import org.bukkit.Material;
-import org.bukkit.NamespacedKey;
-import org.bukkit.block.Block;
-import org.bukkit.block.Container;
-import org.bukkit.command.Command;
-import org.bukkit.command.CommandExecutor;
-import org.bukkit.command.CommandSender;
-import org.bukkit.command.TabExecutor;
-import org.bukkit.configuration.file.FileConfiguration;
-import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
-import org.bukkit.event.EventHandler;
-import org.bukkit.event.Listener;
-import org.bukkit.event.player.PlayerInteractEvent;
-import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.SkullMeta;
-import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
 import java.io.*;
-import java.nio.file.Files;
 import java.util.*;
-import java.util.UUID;
-import java.util.stream.Collectors;
 
-public final class PlayerHeads extends JavaPlugin implements TabExecutor {
-    private List<HeadEntry> headEntries = new ArrayList<>();
+public final class PlayerHeads extends JavaPlugin {
+    private List<PlayerHeadData> playerHeads = new ArrayList<>();
 
     @Override
     public void onEnable() {
-        createDataFolder();
-        loadHeadsFromFile("playerheads.txt");
-        getCommand("starthead").setExecutor(this);
+        getLogger().info("PlayerHeadsPlugin enabled!");
+        loadPlayerHeads();
+        getCommand("starthead").setExecutor((sender, command, label, args) -> {
+            if (sender instanceof Player) {
+                if (args.length != 1) {
+                    sender.sendMessage("Usage: /starthead <index>");
+                    return false;
+                }
+
+                int index = Integer.parseInt(args[0]);
+                givePlayerHeads((Player) sender, index);
+                return true;
+            }
+            return false;
+        });
     }
 
-    private void createDataFolder() {
-        File dataFolder = getDataFolder();
-        if (!dataFolder.exists()) {
-            if (dataFolder.mkdir()) {
-                getLogger().info("Data folder created.");
-            } else {
-                getLogger().warning("Failed to create data folder.");
-            }
-        }
-    }
-
-    private void loadHeadsFromFile(String fileName) {
-        try {
-            File file = new File(getDataFolder(), fileName);
-            if (!file.exists()) {
-                getLogger().warning("Heads file not found: " + fileName);
-                return;
-            }
-
-            BufferedReader reader = new BufferedReader(new FileReader(file));
+    private void loadPlayerHeads() {
+        File file = new File(getDataFolder(), "playerheads.csv");
+        try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
             String line;
             while ((line = reader.readLine()) != null) {
                 String[] parts = line.split(",");
                 if (parts.length == 3) {
-                    int index = Integer.parseInt(parts[0]);
                     String name = parts[1];
-                    String uuid = formatUUID(parts[2]);
-                    headEntries.add(new HeadEntry(index, name, uuid));
+                    String uuid = parts[2];
+                    playerHeads.add(new PlayerHeadData(Integer.parseInt(parts[0]), name, uuid));
                 }
             }
-            reader.close();
-        } catch (Exception e) {
-            getLogger().severe("Error reading heads file: " + e.getMessage());
+        } catch (IOException e) {
+            getLogger().warning("Failed to load player heads from CSV file!");
+            e.printStackTrace();
         }
+    }
+
+    private void givePlayerHeads(Player player, int startIndex) {
+        int lastIndex = startIndex;
+
+        for (int i = startIndex; i < playerHeads.size(); i++) {
+            PlayerHeadData headData = playerHeads.get(i);
+            if (player.getInventory().firstEmpty() == -1) break;  // No empty slots left
+
+            String formattedUUID = formatUUID(headData.getUuid());
+            String giveCommand = "/give " + player.getName() + " minecraft:player_head[profile={id:" + formattedUUID + "}]";
+
+            // Execute the give command
+            Bukkit.dispatchCommand(Bukkit.getConsoleSender(), giveCommand);
+
+            // Add lore to the head
+            ItemStack head = new ItemStack(Material.PLAYER_HEAD);
+            SkullMeta meta = (SkullMeta) head.getItemMeta();
+            if (meta != null) {
+                meta.setDisplayName(headData.getName() + " #" + headData.getIndex());
+                List<String> lore = new ArrayList<>();
+                lore.add(headData.getName()); // Line 1: Name from CSV
+                lore.add("#" + headData.getIndex()); // Line 2: Index from CSV
+                meta.setLore(lore);
+                head.setItemMeta(meta);
+                player.getInventory().addItem(head);
+            }
+
+            lastIndex = i;
+        }
+
+        player.sendMessage("Your inventory has been filled starting from index " + startIndex + " to " + lastIndex + "!");
     }
 
     private String formatUUID(String uuid) {
-        long msb = Long.parseLong(uuid.substring(0, 16), 16);
-        long lsb = Long.parseLong(uuid.substring(16, 31), 16) * 0x10 + Long.parseLong(uuid.substring(31, 32), 16);
-
-        long a = msb >> 32;
-        long b = -(-msb & 0xFFFFFFFFL);
-        long c = lsb >> 32;
-        long d = lsb & 0xFFFFFFFFL;
+        int a = Integer.parseInt(uuid.substring(0, 7), 16) * 0x10 + Integer.parseInt(uuid.substring(7, 8), 16);
+        int b = Integer.parseInt(uuid.substring(8, 15), 16) * 0x10 + Integer.parseInt(uuid.substring(15, 16), 16);
+        int c = Integer.parseInt(uuid.substring(16, 23), 16) * 0x10 + Integer.parseInt(uuid.substring(23, 24), 16);
+        int d = Integer.parseInt(uuid.substring(24, 31), 16) * 0x10 + Integer.parseInt(uuid.substring(31, 32), 16);
         return "[I;" + a + "," + b + "," + c + "," + d + "]";
     }
 
-    @Override
-    public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
-        if (!(sender instanceof Player)) {
-            sender.sendMessage(ChatColor.RED + "This command can only be used by players.");
-            return true;
-        }
+    private static class PlayerHeadData {
+        private final int index;
+        private final String name;
+        private final String uuid;
 
-        Player player = (Player) sender;
-
-        if (args.length != 1) {
-            player.sendMessage(ChatColor.RED + "Usage: /starthead <index>");
-            return true;
-        }
-
-        try {
-            int startIndex = Integer.parseInt(args[0]);
-            int lastIndex = givePlayerHeads(player, startIndex);
-            player.sendMessage(ChatColor.GREEN + "Heads given up to index: " + lastIndex);
-        } catch (NumberFormatException e) {
-            player.sendMessage(ChatColor.RED + "Invalid index provided.");
-        }
-
-        return true;
-    }
-
-    private int givePlayerHeads(Player player, int startIndex) {
-        int lastIndex = startIndex;
-
-        for (int i = startIndex - 1; i < headEntries.size(); i++) {
-            HeadEntry entry = headEntries.get(i);
-
-            String command = "/give @s minecraft:player_head[profile={id:" + entry.uuid + "}]";
-            Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command);
-
-            lastIndex = entry.index;
-        }
-
-        return lastIndex;
-    }
-
-    private static class HeadEntry {
-        int index;
-        String name;
-        String uuid;
-
-        HeadEntry(int index, String name, String uuid) {
+        public PlayerHeadData(int index, String name, String uuid) {
             this.index = index;
             this.name = name;
             this.uuid = uuid;
         }
-    }
 
+        public int getIndex() {
+            return index;
+        }
+
+        public String getName() {
+            return name;
+        }
+
+        public String getUuid() {
+            return uuid;
+        }
+    }
 }
