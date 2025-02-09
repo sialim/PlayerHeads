@@ -2,6 +2,7 @@ package me.sialim.playerheads;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
@@ -38,13 +39,15 @@ public class playerHeadsHandler {
         }
     }
 
-    public void givePlayerHeads(Player player, int startIndex) {
+    public void givePlayerHeads(Player player, int startIndex,JavaPlugin plugin) {
+
         int lastIndex = startIndex;
 
         for (int i = startIndex; i < playerHeads.size(); i++) {
-            PlayerHeadData headData = playerHeads.get(i);
-            String texture=null;
             if (player.getInventory().firstEmpty() == -1) break;  // No empty slots left
+            PlayerHeadData headData = playerHeads.get(i);
+            Bukkit.getScheduler().runTaskAsynchronously(plugin,() -> {
+            String texture=null;
 
             //String formattedUUID = formatUUID(headData.getUuid());
             //String giveCommand = "/give " + player.getName() + " minecraft:player_head[profile={id:" + formattedUUID + "}]";
@@ -71,41 +74,43 @@ public class playerHeadsHandler {
 
             if (meta != null) {
                 try {
+                    // 2) Get 'profile' field on the meta class
                     Class<?> skullMetaClass = meta.getClass();
-
                     Field profileField = skullMetaClass.getDeclaredField("profile");
                     profileField.setAccessible(true);
 
+                    // 3) Construct a new GameProfile (reflection)
                     Class<?> gameProfileClass = Class.forName("com.mojang.authlib.GameProfile");
-                    Constructor<?> gameProfileConstructor =
-                            gameProfileClass.getConstructor(UUID.class, String.class);
+                    Constructor<?> gameProfileConstructor = gameProfileClass.getConstructor(UUID.class, String.class);
+                    Object gameProfile = gameProfileConstructor.newInstance(UUID.randomUUID(), "");
 
-                    Object gameProfile = gameProfileConstructor.newInstance(UUID.randomUUID(), null);
-
-                    Method getPropertiesMethod = gameProfileClass.getMethod("getProperties");
-                    Object properties = getPropertiesMethod.invoke(gameProfile);
-
+                    // 4) Add the texture property to the profile
                     Class<?> propertyClass = Class.forName("com.mojang.authlib.properties.Property");
                     Constructor<?> propertyConstructor = propertyClass.getConstructor(String.class, String.class);
                     Object textureProperty = propertyConstructor.newInstance("textures", texture);
 
-                    Method putMethod = properties.getClass().getMethod("put", Object.class, Object.class);
-                    putMethod.invoke(properties, "textures", textureProperty);
+                    // gameProfile.getProperties().put("textures", textureProperty)
+                    Method getPropertiesMethod = gameProfileClass.getMethod("getProperties");
+                    Object properties = getPropertiesMethod.invoke(gameProfile);
+                    properties.getClass().getMethod("put", Object.class, Object.class)
+                            .invoke(properties, "textures", textureProperty);
 
+                    // 5) Assign that profile back into the skull meta
                     profileField.set(meta, gameProfile);
 
-                } catch (Exception t) {
-                    t.printStackTrace();
+                } catch (Exception e) {
+                    e.printStackTrace();
                 }
 
                 meta.setDisplayName(headData.getName() + " #" + headData.getIndex());
                 List<String> lore = new ArrayList<>();
-                lore.add(headData.getName()); // Line 1: Name from CSV
-                lore.add("#" + headData.getIndex()); // Line 2: Index from CSV
+                lore.add(headData.getName());
+                lore.add("#" + headData.getIndex());
                 meta.setLore(lore);
                 head.setItemMeta(meta);
                 player.getInventory().addItem(head);
             }
+            });
 
             lastIndex = i;
         }
