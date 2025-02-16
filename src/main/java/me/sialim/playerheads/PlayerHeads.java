@@ -8,24 +8,10 @@ import java.util.Objects;
 
 public final class PlayerHeads extends JavaPlugin {
 
-    playerHeadsHandler playerHeadsHandler = new playerHeadsHandler();
     @Override
     public void onEnable() {
         getLogger().info("PlayerHeadsPlugin enabled!");
-        playerHeadsHandler.loadPlayerHeads(this);
-        //getCommand("starthead").setExecutor(new headCommand());
-        Objects.requireNonNull(getCommand("starthead")).setExecutor((sender, command, label, args) -> {
-                if (sender instanceof Player) {
-                    if (args.length != 1) {
-                        sender.sendMessage("Usage: /starthead <index>");
-                        return false;
-                    }
-
-                    int index = Integer.parseInt(args[0]);
-                    playerHeadsHandler.givePlayerHeads((Player) sender, index,this);
-                }
-            return true;
-        });
+        getCommand("starthead").setExecutor(new headCommand(this));
     }
 
 

@@ -3,6 +3,7 @@ package me.sialim.playerheads;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import org.bukkit.Bukkit;
+import org.bukkit.ChatColor;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
@@ -39,14 +40,14 @@ public class playerHeadsHandler {
         }
     }
 
-    public void givePlayerHeads(Player player, int startIndex,JavaPlugin plugin) {
+    public void givePlayerHeads(Player player, int startIndex, JavaPlugin plugin) {
 
+        Bukkit.getScheduler().runTaskAsynchronously(plugin,() -> {
         int lastIndex = startIndex;
 
         for (int i = startIndex; i < playerHeads.size(); i++) {
             if (player.getInventory().firstEmpty() == -1) break;  // No empty slots left
             PlayerHeadData headData = playerHeads.get(i);
-            Bukkit.getScheduler().runTaskAsynchronously(plugin,() -> {
             String texture=null;
 
             //String formattedUUID = formatUUID(headData.getUuid());
@@ -102,23 +103,30 @@ public class playerHeadsHandler {
                     e.printStackTrace();
                 }
 
-                meta.setDisplayName(headData.getName() + " #" + headData.getIndex());
+                meta.setDisplayName(ChatColor.YELLOW + headData.getName() + "'s Head");
                 List<String> lore = new ArrayList<>();
-                lore.add(headData.getName());
-                lore.add("#" + headData.getIndex());
+                lore.add(ChatColor.WHITE + "\""+ headData.getName() + "\"");
+                lore.add(ChatColor.WHITE + "#" + headData.getIndex());
                 meta.setLore(lore);
                 head.setItemMeta(meta);
                 player.getInventory().addItem(head);
             }
-            });
 
             lastIndex = i;
         }
 
         player.sendMessage("Your inventory has been filled starting from index " + startIndex + " to " + lastIndex + "!");
+        });
+    }
+    public PlayerHeadData getPlayerHeadData(int index) {
+        return playerHeads.get(index);
+    }
+    public int getPlayerHeadsCount() {
+        return playerHeads.size();
     }
 
-    private static class PlayerHeadData {
+
+    public static class PlayerHeadData {
         private final int index;
         private final String name;
         private final String uuid;
